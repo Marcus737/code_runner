@@ -1,0 +1,16 @@
+[package]
+name = "code_runner"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tklog = "0.0.3"
+log = "0.4.22"
+
+[dependencies.uuid]
+version = "1.10.0"
+features = [
+    "v4",                # Lets you generate random UUIDs
+    "fast-rng",          # Use a faster (but still sufficiently random) RNG
+    "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
+]

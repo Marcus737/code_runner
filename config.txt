@@ -1,0 +1,2 @@
+dockerfile_dir=/home/panzi/rust_projects/code_runner/dockerfiles/
+use_created_image=true
