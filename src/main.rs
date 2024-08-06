@@ -1,15 +1,15 @@
-use std::collections::HashMap;
-use std::fs;
 
+use std::env::set_var;
+use std::fs;
+use log::info;
 use crate::config::read_config;
-use crate::image::{build_images, Image};
-use crate::tape::{Tape, TapePlayer};
-use crate::tape::java_tape::JavaTape;
+use crate::image::{build_images};
+
 
 mod util;
-mod tape;
 mod config;
 mod image;
+mod runner;
 
 #[derive(Debug)]
 struct Code{
@@ -19,7 +19,7 @@ struct Code{
     code_string: String,
     time_limit: u64,
     memory_limit: u64,
-    image_id: String
+    image_name: String,
 }
 
 impl Clone for Code {
@@ -31,7 +31,7 @@ impl Clone for Code {
             code_string:  String::from(&self.code_string),
             time_limit: self.time_limit,
             memory_limit: self.memory_limit,
-            image_id: String::from(&self.image_id),
+            image_name: String::from(&self.image_name),
         }
     }
 
@@ -42,50 +42,56 @@ impl Clone for Code {
         self.memory_limit = source.memory_limit;
         self.code_string = String::from(&source.code_string);
         self.time_limit = source.time_limit;
-        self.image_id =  String::from(&source.image_id);
+        self.image_name =  String::from(&source.image_name);
     }
 }
 
 fn main() {
+    set_var("RUST_LOG", "debug");
+    env_logger::init();
+
     let config = read_config();
 
-    let map = build_images(config);
+    let map = build_images(&config);
 
-    let mut code = Code{
+    info!("{:?}", map);
+
+    let java_code = Code{
         id: "111".parse().unwrap(),
-        language_id: String::from("java8"),
+        language_id: String::from("java11"),
         input: String::from("1 33\n"),
         code_string: fs::read_to_string("Main.java").unwrap(),
-        time_limit: 30000,
-        memory_limit: 16,
-        image_id: String::new()
+        time_limit: 3000,
+        memory_limit: 16000,
+        image_name: format!("{}:{}", config.repository_name, "java11")
     };
 
+    let py3_code =Code{
+        id: "1112".parse().unwrap(),
+        language_id: String::from("python3"),
+        input: String::from("1 3356\n"),
+        code_string: fs::read_to_string("main.py").unwrap(),
+        time_limit: 5,
+        memory_limit: 16000,
+        image_name: format!("{}:{}", config.repository_name, "python3")
+    };
 
-    let tape: Box<dyn Tape> = get_tape(&mut code, &map).unwrap();
+    let rust_code = Code{
+        id: "1112".parse().unwrap(),
+        language_id: String::from("rust1.78"),
+        input: String::from("1 3356\n"),
+        code_string: fs::read_to_string("main.rs").unwrap(),
+        time_limit: 500,
+        memory_limit: 16000,
+        image_name: format!("{}:{}", config.repository_name, "rust1.78")
+    };
 
-
-    let mut player = TapePlayer::new(
-        tape
-    );
-
-    player.play(code);
+    
+    
+    let result = runner::run_code(&java_code, &config);
+    println!("{:?}", result);
 
 
 }
-
-fn get_tape(code: &mut Code, map: &HashMap<String, Image>) -> Option<Box<dyn Tape>>
-{
-    let language_id = &code.language_id;
-    code.image_id = String::from(&map.get(language_id).unwrap().image_id);
-    if language_id.starts_with("java") {
-        Some(
-            Box::new(JavaTape::new())
-        )
-    }else {
-        None
-    }
-}
-
 
 
