@@ -1,14 +1,13 @@
 use std::any::Any;
-use std::fmt::Debug;
-use std::sync::{Arc, LockResult, Mutex};
-use std::sync::mpsc::{channel, Receiver, RecvError, Sender, SendError};
+use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
-use std::thread::{JoinHandle, sleep};
-use std::time::Duration;
+use std::thread::{JoinHandle};
 use log::{error, info};
-use crate::util::thread_util::TaskType::EXIT;
+use anyhow::Result;
+use crate::common::util::thread_util::TaskType::EXIT;
 
-type SendTrait = Result<Box<dyn Any + Send + 'static>,String>;
+type SendTrait = Result<Box<dyn Any + Sync + Send + 'static>>;
 
 enum TaskType{
     NORMAL,
@@ -18,47 +17,51 @@ enum TaskType{
 
 struct Task
 {
-    closure:  Option<Box<dyn FnOnce() -> SendTrait + Send + 'static>>,
+    closure:  Option<Box<dyn FnOnce() -> SendTrait + Sync + Send + 'static>>,
     task_type: TaskType,
     result_sender: Option<Sender<SendTrait>>
 }
 
 pub struct ThreadPool {
     core_size: u32,
-    workers: Vec<Worker>,
+    _workers: Vec<Worker>,
     sender: Sender<Task>,
 
 }
 
 struct Worker{
-    id: usize,
-    job: JoinHandle<()>
+    _id: usize,
+    _job: JoinHandle<()>
 }
 
 impl Worker{
+    
+
     fn new(id: usize, recv: Arc<Mutex<Receiver<Task>>>) -> Worker {
         // println!("cur id : {}", id);
         let thread = thread::spawn( move || {
             loop {
+                
+                
                 let recv = match recv.lock() {
                     Ok(r) => { r }
                     Err(err) => {
-                        error!("{}", err.to_string());
-                        break
+                        error!("{id} error {}", err.to_string());
+                        continue;
                     }
                 };
                 
                 let task =  match recv.recv() {
                     Ok(r) => {r}
                     Err(err) => {
-                        error!("{}", err.to_string());
-                        break
+                        error!("{id} error {}", err.to_string());
+                        continue;
                     }
                 };
                 
                 match task.task_type {
                     TaskType::NORMAL => {
-                        println!("Worker {id} got a job; executing.");
+                        // println!("Worker {id} got a job; executing.");
                         info!("Worker {id} got a job; executing.");
                         let fun = task.closure;
                         
@@ -75,8 +78,9 @@ impl Worker{
                             Some(sender) => {
                                 match sender.send(result) {
                                     Ok(_) => {}
-                                    Err(error) => {
-                                        error!("{}" ,error.to_string());
+                                    Err(err) => {
+                                        error!("{id} error {}", err.to_string());
+                                        continue;
                                     }
                                 };
                             }
@@ -90,7 +94,7 @@ impl Worker{
             info!("Worker {id} is shutdown.");
             // println!("Worker {id} is shutdown.");
         });
-        Worker{ id, job: thread }
+        Worker{ _id: id, _job: thread }
     }
 }
 
@@ -98,22 +102,18 @@ impl Worker{
 
 impl ThreadPool {
     
-    pub fn execute<F>(&self, f: F) -> Result<Receiver<SendTrait>,String>
+    pub fn execute<F>(&self, f: F) -> Result<Receiver<SendTrait>>
     where 
-        F: FnOnce() -> SendTrait + Send + 'static 
+        F: FnOnce() -> SendTrait + Sync + Send + 'static 
     {
         let (sender, recv) = channel::<SendTrait>();
-        match self.sender.send(Task {
+        self.sender.send(Task {
             closure: Some(Box::new(f)),
             task_type: TaskType::NORMAL,
             result_sender: Some(sender),
-        }) {
-            Ok(_) => {}
-            Err(err) => {
-                return Err(err.to_string());
-            }
-        };
+        })?;
         Ok(recv)
+        
     }
     
     
@@ -131,7 +131,7 @@ impl ThreadPool {
 
         ThreadPool{
             core_size,
-            workers: handles,
+            _workers: handles,
             sender
         }
     }
